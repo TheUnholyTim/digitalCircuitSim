@@ -1,16 +1,67 @@
-/**
-// Created by Tim Kramer!
-**/
+const Trace = require('./trace');
 
-const not = a => ~a & 1;  // Defining the not operation in a function
-const and = (a, b) => a && b; //Defining the end operation function
-const nand = (a, b) => not(a && b); //defining the nand operation function
-const or = (a, b) => a || b; //defining the or operation function
-const nor = (a, b) => not(a||b); // defining the nor operation function
-const xor = (a, b) => a ^ b; // defining the xor operation function
-const xnor = (a, b) => not(a^b); // defining the xnor operation function
+const indexBy = (array, prop) => array.reduce((output, item) => {
+  output[item[prop]] = item;
+  return output;
+}, {});
 
-// Setting the components here!
+const not = a => ~a & 1;
+const and = (a, b) => a && b;
+const nand = (a, b) => not(a && b);
+const or = (a, b) => a || b;
+const nor = (a, b) => not(a || b);
+const xor = (a, b) => a ^ b;
+const xnor = (a, b) => not(a ^ b);
+
+const createDFF = (name, clk, dIn) => {
+  return [
+    {
+      id: `${name}.not_d_in`,
+      type: 'not',
+      inputs: [dIn],
+      state: 0
+    },
+    {
+      id: `${name}.d_nand_a`,
+      type: 'nand',
+      inputs: [dIn, clk],
+      state: 0
+    },
+    {
+      id: `${name}.q`,
+      type: 'nand',
+      inputs: [`${name}.d_nand_a`, `${name}.q_`],
+      state: 0
+    },
+    {
+      id: `${name}.d_nand_c`,
+      type: 'nand',
+      inputs: [`${name}.not_d_in`, clk],
+      state: 0
+    },
+    {
+      id: `${name}.q_`,
+      type: 'nand',
+      inputs: [`${name}.d_nand_c`, `${name}.q`],
+      state: 0
+    },
+  ];
+}
+
+const createDFFE = (name, clk, dIn, dEnable) => {
+  const gatedClock = {
+    id: `${name}.clk`,
+    type: 'and',
+    inputs: [clk, dEnable],
+    state: 0
+  };
+
+  return [
+    gatedClock,
+    ...createDFF(name, gatedClock.id, dIn)
+  ];
+}
+
 const components = [
   {
     id: 'clock',
@@ -25,59 +76,18 @@ const components = [
     state: 0,
   },
   {
-    id: 'and',
-    type: 'and',
-    inputs: ['clock', 'A'],
+    id: 'E',
+    type: 'controlled',
+    inputs: [],
     state: 0,
   },
-  {
-    id: 'nand',
-    type: 'nand',
-    inputs: ['clock', 'A'],
-    state: 0,
-  },
-  {
-    id: 'or',
-    type: 'or',
-    inputs: ['clock', 'A'],
-    state: 0,
-  },
-  {
-    id: 'xor',
-    type: 'xor',
-    inputs: ['clock', 'A'],
-    state: 0,
-  },
-  {
-    id: 'nor',
-    type: 'nor',
-    inputs: ['clock', 'A'],
-    state: 0,
-  },
-  {
-    id: 'xnor',
-    type: 'xnor',
-    inputs: ['clock', 'A'],
-    state: 0,
-  },
-  {
-    id: 'not',
-    type: 'not',
-    inputs: ['clock'];
-    state: 0,
-  }
+  ...createDFFE('DFF', 'clock', 'A', 'E')
 ];
 
-/**
-  since we won't always want to go through every component on the list above, here is a little something
-  to just get what we want!
-**/
 const componentLookup = indexBy(components, 'id');
 
-// function to evaluate what are the component and it's out put
 const evaluate = (components, componentLookup) => {
-  const binaryOp = (logicFn, component) =>{
-    //this will get if any of the inputs is a floating value and therefore, with that, what is the operation we're trying to do.
+  const binaryOp = (logicFn, component) => {
     const aOut = componentLookup[component.inputs[0]];
     const bOut = componentLookup[component.inputs[1]];
 
@@ -86,49 +96,56 @@ const evaluate = (components, componentLookup) => {
       : logicFn(aOut.state, bOut.state);
     return;
   }
+
   components.forEach(component => {
-    switch(component.type){
-      case 'controlled':
-        return;
-        break;
-      case 'and':
-        return binaryOp(and, component);
-        break;
-      case 'nand':
-        return binaryOp(nand, component);
-        break;
-      case 'or':
-        return binaryOp(or, component);
-        break;
-      case 'xor':
-        return binaryOp(xor, component);
-        break;
-      case 'nor':
-        return binaryOp(nor, component);
-        break;
-      case 'xnor':
-        return binaryOp(xnor, component);
-        break;
-      case 'not': // since not isn't exactly a binary operation, we'll have something a bit different.
-        const aOut = componentLookup[component.inputs[0]];
-        components.state = (aOut === 'x') ? 'x' : not(aOut.state);
-        return;
-        break;
+    if (component.type === 'controlled') return;
+    if (component.type === 'and') return binaryOp(and, component);
+    if (component.type === 'nand') return binaryOp(nand, component);
+    if (component.type === 'or') return binaryOp(or, component);
+    if (component.type === 'nor') return binaryOp(nor, component);
+    if (component.type === 'xor') return binaryOp(xor, component);
+    if (component.type === 'xnor') return binaryOp(xnor, component);
+    if (component.type === 'not') {
+      const aOut = componentLookup[component.inputs[0]];
+      component.state = (aOut === 'x') ? 'x' : not(aOut.state);
+      return;
     }
   });
-}
+};
 
 const EVALS_PER_STEP = 5;
 
 const runFor = 25;
-for (let iteration = 0; iteration < runFor; iteration ++){
+const trace = new Trace();
+
+for (let iteration = 0; iteration < runFor; iteration++) {
   componentLookup.clock.state = not(componentLookup.clock.state);
 
-  if (interation % 5 === 0){
-    componentLookup.A.state = not(componentLookup.A.state);
+  if (iteration === 0) {
+    componentLookup.E.state = 1;
+  }
+  if (iteration === 1) {
+    componentLookup.E.state = 0;
+    componentLookup.A.state = 1;
+  }
+  if (iteration === 7) {
+    componentLookup.E.state = 1;
+  }
+  if (iteration === 9) {
+    componentLookup.E.state = 0;
+    componentLookup.A.state = 0;
   }
 
-  for(let i = 0; i < EVALS_PER_STEP; i++){
+  for (let i = 0; i < EVALS_PER_STEP; i++) {
     evaluate(components, componentLookup);
   }
+
+  trace.sample(components);
 }
+
+trace.getTraces([
+  'clock',
+  'A',
+  'E',
+  'DFF.q'
+]).forEach(trace => console.log(trace));
