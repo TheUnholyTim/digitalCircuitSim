@@ -98,20 +98,36 @@ const evaluate = (components, componentLookup) => {
   }
 
   components.forEach(component => {
-    if (component.type === 'controlled') return;
-    if (component.type === 'and') return binaryOp(and, component);
-    if (component.type === 'nand') return binaryOp(nand, component);
-    if (component.type === 'or') return binaryOp(or, component);
-    if (component.type === 'nor') return binaryOp(nor, component);
-    if (component.type === 'xor') return binaryOp(xor, component);
-    if (component.type === 'xnor') return binaryOp(xnor, component);
-    if (component.type === 'not') {
-      const aOut = componentLookup[component.inputs[0]];
-      component.state = (aOut === 'x') ? 'x' : not(aOut.state);
-      return;
+    switch(component.type){
+      case 'controlled':
+        return;
+        break;
+      case 'and':
+        return binaryOp(and, component);
+        break;
+      case 'nand':
+        return binaryOp(nand, component);
+        break;
+      case 'or':
+        return binaryOp(or, component);
+        break;
+      case 'xor':
+        return binaryOp(xor, component);
+        break;
+      case 'nor':
+        return binaryOp(nor, component);
+        break;
+      case 'xnor':
+        return binaryOp(xnor, component);
+        break;
+      case 'not': // since not isn't exactly a binary operation, we'll have something a bit different.
+        const aOut = componentLookup[component.inputs[0]];
+        components.state = (aOut === 'x') ? 'x' : not(aOut.state);
+        return;
+        break;
+      }
+      });
     }
-  });
-};
 
 const EVALS_PER_STEP = 5;
 
